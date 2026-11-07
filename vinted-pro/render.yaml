@@ -1,1 +1,21 @@
-
+services:
+  - type: web
+    name: vintedpro
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/status
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: APP_ACCESS_TOKEN
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: VINTED_PROVIDER
+        value: apify
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_ACTOR_ID
+        sync: false
+      - key: APIFY_INPUT_TEMPLATE
+        sync: false
