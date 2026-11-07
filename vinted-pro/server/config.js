@@ -108,10 +108,10 @@ function load(env = process.env) {
       maxResults: int(env.PROVIDER_MAX_RESULTS, 40),
     },
     scan: {
-      intervalMinutes: int(env.SCAN_INTERVAL_MINUTES, 60), // 0 = balayage automatique désactivé
+      intervalMinutes: int(env.SCAN_INTERVAL_MINUTES, 60),
       queries: (env.SCAN_QUERIES || 'Nike,Adidas,Carhartt,Ralph Lauren,Levi\'s,The North Face,Patagonia,New Balance,Lacoste,Stüssy')
         .split(',').map((x) => x.trim()).filter(Boolean),
-      batch: int(env.SCAN_BATCH, 3), // recherches par balayage (chaque recherche consomme ta source d'annonces)
+      batch: int(env.SCAN_BATCH, 3),
       minProfit: int(env.SCAN_MIN_PROFIT, 8),
       minScore: int(env.SCAN_MIN_SCORE, 45),
       maxPrice: env.SCAN_MAX_PRICE ? Number(env.SCAN_MAX_PRICE) : null,
