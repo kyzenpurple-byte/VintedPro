@@ -2,6 +2,7 @@ services:
   - type: web
     name: vintedpro
     runtime: docker
+    dockerContext: ./vinted-pro
     dockerfilePath: ./vinted-pro/Dockerfile
     plan: free
     healthCheckPath: /api/status
