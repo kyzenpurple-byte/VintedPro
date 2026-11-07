@@ -1,0 +1,22 @@
+# Déploiement Render (offre gratuite possible) : le serveur tourne dans le cloud, le téléphone n'a besoin que d'un lien.
+services:
+  - type: web
+    name: vintedpro
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/status
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: APP_ACCESS_TOKEN
+        generateValue: true      # jeton généré par Render : à lire dans Environment, à saisir une fois sur le téléphone
+      - key: GEMINI_API_KEY
+        sync: false              # tu la colles dans le tableau de bord Render, jamais dans le code
+      - key: VINTED_PROVIDER
+        value: apify
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_ACTOR_ID
+        sync: false
+      - key: APIFY_INPUT_TEMPLATE
+        sync: false

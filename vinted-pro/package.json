@@ -1,0 +1,12 @@
+{
+  "name": "vintedpro",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Assistant de recherche de bonnes affaires Vinted : vraies annonces, analyse de marché, agent IA.",
+  "main": "server/server.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test test/*.test.js"
+  }
+}
