@@ -1,5 +1,5 @@
 'use strict';
-// Agent IA : Intégration directe de l'API Gemini REST v1beta avec fallback automatique.
+// Agent IA : Intégration directe de l'API Gemini REST v1beta configurée avec gemini-3.8-flash.
 
 const { evaluate, rank } = require('./analysis');
 const { ProviderError } = require('./providers');
@@ -141,10 +141,10 @@ async function callGeminiApi(cfg, modelName, body) {
   return candidate.content;
 }
 
-const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 
 async function callGemini(cfg, body) {
-  const initialModel = cfg.ai.model || 'gemini-1.5-flash';
+  const initialModel = cfg.ai.model || 'gemini-3.8-flash';
   const modelsToTry = [initialModel, ...GEMINI_MODELS.filter((m) => m !== initialModel)];
 
   let lastError;
