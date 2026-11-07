@@ -1,6 +1,6 @@
 'use strict';
-// Agent IA : Modèle via API OpenRouter qui comprend la demande, lance des recherches réelles
-// via les outils ci-dessous, lit les analyses calculées par le serveur, puis classe et commente.
+// Agent IA : Intégration directe de l'API Gemini (Google GenAI REST v1beta)
+// supportant le Function Calling et l'exécution d'outils en boucle.
 
 const { evaluate, rank } = require('./analysis');
 const { ProviderError } = require('./providers');
@@ -21,70 +21,70 @@ Règles non négociables :
 
 Quand tu as assez d'éléments, appelle present_results une seule fois : au plus 8 annonces, de la plus à la moins intéressante. Pour chacune, une justification concrète appuyée sur les chiffres fournis (écart avec la médiane, nombre de comparables, état, signaux de demande) et les risques réels (état, photos, authenticité, estimation fragile). Pas de formules creuses, pas de remplissage. Réponds en français.`;
 
-const TOOLS = [
+// Format des outils pour l'API Gemini
+const GEMINI_TOOLS = [
   {
-    type: 'function',
-    function: {
-      name: 'search_vinted',
-      description:
-        "Recherche de vraies annonces Vinted via la source de données configurée. Renvoie les annonces avec leur analyse de marché calculée (prix médian des comparables, bénéfice estimé prudent et central, score). À utiliser pour toute recherche d'articles.",
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Mots-clés (modèle, type de pièce). Ex : "dunk low", "polaire".' },
-          brand: { type: 'string', description: 'Marque, si pertinente.' },
-          max_price: { type: 'number', description: "Prix maximum de l'annonce en euros." },
-          size: { type: 'string', description: 'Taille (S, M, L, 42...).' },
-          min_profit: { type: 'number', description: 'Bénéfice prudent estimé minimum, en euros (ex. 20). N\'afficher que les annonces au moins aussi rentables.' },
-          category: {
-            type: 'string',
-            enum: ['Toutes', 'Sneakers', 'Sweats', 'Vestes', 'T-shirts', 'Pantalons', 'Vintage', 'Accessoires'],
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'compare_listings',
-      description: "Compare côte à côte des annonces déjà renvoyées par search_vinted (par listing_id) : prix demandés, coûts d'acquisition, estimations, score.",
-      parameters: {
-        type: 'object',
-        properties: { listing_ids: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6 } },
-        required: ['listing_ids'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'present_results',
-      description:
-        "Termine la mission : renvoie la sélection finale à l'utilisateur. N'utilise que des listing_id issus de search_vinted. Appel unique.",
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string', description: 'Réponse courte à la demande (2 à 4 phrases), en français.' },
-          picks: {
-            type: 'array',
-            maxItems: 8,
-            items: {
-              type: 'object',
-              properties: {
-                listing_id: { type: 'string' },
-                verdict: { type: 'string', enum: ['a_saisir', 'a_surveiller', 'a_eviter'] },
-                rationale: { type: 'string', description: 'Pourquoi cet article est (ou non) une bonne affaire, avec les chiffres fournis.' },
-                risks: { type: 'string', description: 'Risques concrets à vérifier avant achat.' },
-              },
-              required: ['listing_id', 'verdict', 'rationale'],
+    functionDeclarations: [
+      {
+        name: 'search_vinted',
+        description:
+          "Recherche de vraies annonces Vinted via la source de données configurée. Renvoie les annonces avec leur analyse de marché calculée (prix médian des comparables, bénéfice estimé prudent et central, score). À utiliser pour toute recherche d'articles.",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            query: { type: 'STRING', description: 'Mots-clés (modèle, type de pièce). Ex : "dunk low", "polaire".' },
+            brand: { type: 'STRING', description: 'Marque, si pertinente.' },
+            max_price: { type: 'NUMBER', description: "Prix maximum de l'annonce en euros." },
+            size: { type: 'STRING', description: 'Taille (S, M, L, 42...).' },
+            min_profit: { type: 'NUMBER', description: 'Bénéfice prudent estimé minimum, en euros (ex. 20).' },
+            category: {
+              type: 'STRING',
+              enum: ['Toutes', 'Sneakers', 'Sweats', 'Vestes', 'T-shirts', 'Pantalons', 'Vintage', 'Accessoires'],
             },
           },
+          required: ['query'],
         },
-        required: ['summary', 'picks'],
       },
-    },
+      {
+        name: 'compare_listings',
+        description: "Compare côte à côte des annonces déjà renvoyées par search_vinted (par listing_id) : prix demandés, coûts d'acquisition, estimations, score.",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            listing_ids: {
+              type: 'ARRAY',
+              items: { type: 'STRING' },
+              description: 'Liste des identifiants des annonces à comparer.'
+            }
+          },
+          required: ['listing_ids'],
+        },
+      },
+      {
+        name: 'present_results',
+        description: "Termine la mission : renvoie la sélection finale à l'utilisateur. N'utilise que des listing_id issus de search_vinted. Appel unique.",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            summary: { type: 'STRING', description: 'Réponse courte à la demande (2 à 4 phrases), en français.' },
+            picks: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  listing_id: { type: 'STRING' },
+                  verdict: { type: 'STRING', enum: ['a_saisir', 'a_surveiller', 'a_eviter'] },
+                  rationale: { type: 'STRING', description: 'Pourquoi cet article est (ou non) une bonne affaire, avec les chiffres fournis.' },
+                  risks: { type: 'STRING', description: 'Risques concrets à vérifier avant achat.' },
+                },
+                required: ['listing_id', 'verdict', 'rationale'],
+              },
+            },
+          },
+          required: ['summary', 'picks'],
+        },
+      },
+    ],
   },
 ];
 
@@ -116,67 +116,32 @@ const compact = ({ listing: l, analysis: a }) => ({
   score: a.score,
 });
 
-// Liste des modèles gratuits de secours actifs sur OpenRouter
-const FREE_MODELS = [
-  'deepseek/deepseek-r1:free',
-  'qwen/qwen-2.5-coder-32b-instruct:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'mistralai/mistral-7b-instruct:free'
-];
-
-async function callOpenRouter(cfg, body) {
-  const baseUrl = cfg.ai.baseUrl || 'https://openrouter.ai/api/v1';
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+async function callGemini(cfg, body) {
+  const url = `${cfg.ai.baseUrl}/v1beta/models/${cfg.ai.model}:generateContent?key=${cfg.ai.apiKey}`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'authorization': `Bearer ${cfg.ai.apiKey}`,
-      'http-referer': cfg.ai.siteUrl || 'http://localhost',
-      'x-title': cfg.ai.appName || 'VintedPro',
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(120000),
   });
 
   if (!res.ok) {
     const text = (await res.text().catch(() => '')).slice(0, 300);
-    if (res.status === 401) throw new AgentError('AI_AUTH', 'Clé API OpenRouter refusée.', 502);
-    if (res.status === 429) throw new AgentError('AI_RATE_LIMIT', 'Limite de requêtes atteinte sur OpenRouter, réessaie dans un instant.', 429);
-    
-    // Exception spécifique si le modèle 404 est indisponible
-    const err = new AgentError('AI_FAILED', `L’API OpenRouter a répondu ${res.status} ${text}`, res.status === 404 ? 404 : 502);
-    err.status = res.status;
-    throw err;
+    if (res.status === 400 || res.status === 401) throw new AgentError('AI_AUTH', 'Clé GEMINI_API_KEY refusée ou invalide.', 502);
+    if (res.status === 429) throw new AgentError('AI_RATE_LIMIT', 'Limite de requêtes atteinte sur Gemini API, réessaie dans un instant.', 429);
+    throw new AgentError('AI_FAILED', `L’API Gemini a répondu ${res.status} ${text}`, 502);
   }
 
   const data = await res.json();
-  return data.choices[0].message;
-}
-
-async function callModelWithFallback(cfg, payload) {
-  const modelsToTry = [
-    cfg.ai.model,
-    ...FREE_MODELS.filter((m) => m !== cfg.ai.model)
-  ];
-
-  let lastError;
-  for (const model of modelsToTry) {
-    try {
-      return await callOpenRouter(cfg, { ...payload, model });
-    } catch (err) {
-      lastError = err;
-      // Si c'est une 404 (modèle non dispo/obsolète), on tente le modèle suivant dans la liste
-      if (err.status === 404 || (err.message && err.message.includes('404'))) {
-        continue;
-      }
-      throw err;
-    }
+  const candidate = data.candidates && data.candidates[0];
+  if (!candidate || !candidate.content) {
+    throw new AgentError('AI_FAILED', 'L’API Gemini a renvoyé une réponse vide.', 502);
   }
-  throw lastError;
+  return candidate.content;
 }
 
 function defaultCallModel(cfg, body) {
-  return callModelWithFallback(cfg, body);
+  return callGemini(cfg, body);
 }
 
 function describeSearch(p) {
@@ -192,7 +157,7 @@ async function runAgent(deps, req) {
   const progress = typeof deps.onProgress === 'function' ? deps.onProgress : () => {};
   const callModel = deps.callModel || ((body) => defaultCallModel(cfg, body));
   if (!cfg.ai.apiKey && !deps.callModel) {
-    throw new AgentError('AI_NOT_CONFIGURED', `${cfg.ai.keyVar || 'OPENROUTER_API_KEY'} n’est pas défini : l’assistant IA est indisponible.`, 503);
+    throw new AgentError('AI_NOT_CONFIGURED', `${cfg.ai.keyVar} n’est pas défini : l’assistant IA est indisponible.`, 503);
   }
 
   const filters = req.filters || {};
@@ -210,10 +175,13 @@ async function runAgent(deps, req) {
     ? `${req.message}\n\n(Contraintes choisies dans l'interface : ${constraints.join(', ')}.)`
     : req.message;
 
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...(req.history || []).slice(-6),
-    { role: 'user', content: userText }
+  // Conversion de l'historique au format Gemini (role: 'user' | 'model')
+  const contents = [
+    ...(req.history || []).slice(-6).map((h) => ({
+      role: h.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof h.content === 'string' ? h.content : JSON.stringify(h.content) }],
+    })),
+    { role: 'user', parts: [{ text: userText }] },
   ];
 
   async function runTool(name, input) {
@@ -263,61 +231,61 @@ async function runAgent(deps, req) {
 
   progress('Analyse de ta demande');
   for (let step = 0; step < (cfg.ai.maxSteps || 8); step++) {
-    const assistantMessage = await callModel({
-      temperature: 0.2,
-      tools: TOOLS,
-      messages,
+    const responseContent = await callModel({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      tools: GEMINI_TOOLS,
+      contents,
     });
 
-    messages.push(assistantMessage);
+    contents.push(responseContent);
 
-    const toolCalls = assistantMessage.tool_calls || [];
-    if (!toolCalls.length) {
-      return finish({ summary: assistantMessage.content || '', picks: [] });
+    const parts = responseContent.parts || [];
+    const functionCalls = parts.filter((p) => p.functionCall).map((p) => p.functionCall);
+
+    if (!functionCalls.length) {
+      const text = parts.filter((p) => p.text).map((p) => p.text).join('\n').trim();
+      return finish({ summary: text, picks: [] });
     }
 
-    const presentingCall = toolCalls.find((tc) => tc.function.name === 'present_results');
+    const presentingCall = functionCalls.find((fc) => fc.name === 'present_results');
     if (presentingCall) {
-      try {
-        final = JSON.parse(presentingCall.function.arguments);
-      } catch (e) {
-        final = null;
-      }
+      final = presentingCall.args || {};
       progress('Rédaction de la sélection');
     }
 
-    const toolResults = await Promise.all(
-      toolCalls.map(async (tc) => {
-        if (tc.function.name === 'present_results') {
+    const functionResponsesParts = await Promise.all(
+      functionCalls.map(async (fc) => {
+        if (fc.name === 'present_results') {
           return {
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: JSON.stringify({ status: 'ok' }),
+            functionResponse: {
+              name: fc.name,
+              response: { status: 'ok' },
+            },
           };
         }
 
-        let input = {};
-        try {
-          input = JSON.parse(tc.function.arguments || '{}');
-        } catch (e) {}
-
         let out;
         try {
-          out = await runTool(tc.function.name, input);
+          out = await runTool(fc.name, fc.args || {});
         } catch (e) {
           out = { error: 'internal', message: e.message };
         }
 
         return {
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: JSON.stringify(out),
+          functionResponse: {
+            name: fc.name,
+            response: out,
+          },
         };
       })
     );
 
     if (final) return finish(final);
-    messages.push(...toolResults);
+
+    contents.push({
+      role: 'user',
+      parts: functionResponsesParts,
+    });
   }
 
   return finish({ summary: 'La recherche a été interrompue avant de produire une sélection.', picks: [] });
@@ -336,8 +304,8 @@ async function runAgent(deps, req) {
         ai: { verdict: p.verdict, rationale: p.rationale, risks: p.risks || null },
       });
     }
-    return { summary: f.summary || '', picks, searches, dropped, model: cfg.ai.model || 'openrouter' };
+    return { summary: f.summary || '', picks, searches, dropped, model: cfg.ai.model };
   }
 }
 
-module.exports = { defaultCallModel, runAgent, AgentError, TOOLS, SYSTEM_PROMPT, evaluate };
+module.exports = { defaultCallModel, runAgent, AgentError, TOOLS: GEMINI_TOOLS, SYSTEM_PROMPT, evaluate };
