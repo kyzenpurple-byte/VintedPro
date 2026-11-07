@@ -1,10 +1,6 @@
 'use strict';
 // Agent IA : Modèle via API OpenRouter qui comprend la demande, lance des recherches réelles
 // via les outils ci-dessous, lit les analyses calculées par le serveur, puis classe et commente.
-//
-// Garde-fou central : le modèle ne produit JAMAIS d'annonce. Il renvoie des identifiants (listing_id)
-// et du texte. Le serveur ne garde que les identifiants qui existent dans les résultats réellement
-// récupérés, et affiche les données de l'annonce (prix, photo, lien) telles que reçues de la source.
 
 const { evaluate, rank } = require('./analysis');
 const { ProviderError } = require('./providers');
@@ -25,7 +21,6 @@ Règles non négociables :
 
 Quand tu as assez d'éléments, appelle present_results une seule fois : au plus 8 annonces, de la plus à la moins intéressante. Pour chacune, une justification concrète appuyée sur les chiffres fournis (écart avec la médiane, nombre de comparables, état, signaux de demande) et les risques réels (état, photos, authenticité, estimation fragile). Pas de formules creuses, pas de remplissage. Réponds en français.`;
 
-// Transformation des schémas d'outils au format OpenAI / OpenRouter
 const TOOLS = [
   {
     type: 'function',
@@ -121,6 +116,14 @@ const compact = ({ listing: l, analysis: a }) => ({
   score: a.score,
 });
 
+// Liste des modèles gratuits de secours actifs sur OpenRouter
+const FREE_MODELS = [
+  'deepseek/deepseek-r1:free',
+  'qwen/qwen-2.5-coder-32b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-7b-instruct:free'
+];
+
 async function callOpenRouter(cfg, body) {
   const baseUrl = cfg.ai.baseUrl || 'https://openrouter.ai/api/v1';
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -139,15 +142,41 @@ async function callOpenRouter(cfg, body) {
     const text = (await res.text().catch(() => '')).slice(0, 300);
     if (res.status === 401) throw new AgentError('AI_AUTH', 'Clé API OpenRouter refusée.', 502);
     if (res.status === 429) throw new AgentError('AI_RATE_LIMIT', 'Limite de requêtes atteinte sur OpenRouter, réessaie dans un instant.', 429);
-    throw new AgentError('AI_FAILED', `L’API OpenRouter a répondu ${res.status} ${text}`, 502);
+    
+    // Exception spécifique si le modèle 404 est indisponible
+    const err = new AgentError('AI_FAILED', `L’API OpenRouter a répondu ${res.status} ${text}`, res.status === 404 ? 404 : 502);
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
   return data.choices[0].message;
 }
 
+async function callModelWithFallback(cfg, payload) {
+  const modelsToTry = [
+    cfg.ai.model,
+    ...FREE_MODELS.filter((m) => m !== cfg.ai.model)
+  ];
+
+  let lastError;
+  for (const model of modelsToTry) {
+    try {
+      return await callOpenRouter(cfg, { ...payload, model });
+    } catch (err) {
+      lastError = err;
+      // Si c'est une 404 (modèle non dispo/obsolète), on tente le modèle suivant dans la liste
+      if (err.status === 404 || (err.message && err.message.includes('404'))) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
 function defaultCallModel(cfg, body) {
-  return callOpenRouter(cfg, body);
+  return callModelWithFallback(cfg, body);
 }
 
 function describeSearch(p) {
@@ -167,7 +196,7 @@ async function runAgent(deps, req) {
   }
 
   const filters = req.filters || {};
-  const registry = new Map(); // id -> { listing, analysis }
+  const registry = new Map();
   const searches = [];
   let final = null;
 
@@ -233,10 +262,8 @@ async function runAgent(deps, req) {
   }
 
   progress('Analyse de ta demande');
-  for (let step = 0; step < (cfg.ai.maxSteps || 10); step++) {
-    const modelChoice = cfg.ai.model || 'meta-llama/llama-3.3-70b-instruct:free';
+  for (let step = 0; step < (cfg.ai.maxSteps || 8); step++) {
     const assistantMessage = await callModel({
-      model: modelChoice,
       temperature: 0.2,
       tools: TOOLS,
       messages,
@@ -259,7 +286,6 @@ async function runAgent(deps, req) {
       progress('Rédaction de la sélection');
     }
 
-    // Exécution des outils en parallèle
     const toolResults = await Promise.all(
       toolCalls.map(async (tc) => {
         if (tc.function.name === 'present_results') {
