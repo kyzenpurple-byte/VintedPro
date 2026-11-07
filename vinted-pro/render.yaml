@@ -1,4 +1,3 @@
-# Déploiement Render (offre gratuite possible) : le serveur tourne dans le cloud, le téléphone n'a besoin que d'un lien.
 services:
   - type: web
     name: vintedpro
