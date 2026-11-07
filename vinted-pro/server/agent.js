@@ -1,6 +1,5 @@
 'use strict';
-// Agent IA : Intégration directe de l'API Gemini (Google GenAI REST v1beta)
-// supportant le Function Calling et l'exécution d'outils en boucle.
+// Agent IA : Intégration directe de l'API Gemini REST v1beta avec fallback automatique.
 
 const { evaluate, rank } = require('./analysis');
 const { ProviderError } = require('./providers');
@@ -21,7 +20,6 @@ Règles non négociables :
 
 Quand tu as assez d'éléments, appelle present_results une seule fois : au plus 8 annonces, de la plus à la moins intéressante. Pour chacune, une justification concrète appuyée sur les chiffres fournis (écart avec la médiane, nombre de comparables, état, signaux de demande) et les risques réels (état, photos, authenticité, estimation fragile). Pas de formules creuses, pas de remplissage. Réponds en français.`;
 
-// Format des outils pour l'API Gemini
 const GEMINI_TOOLS = [
   {
     functionDeclarations: [
@@ -116,8 +114,8 @@ const compact = ({ listing: l, analysis: a }) => ({
   score: a.score,
 });
 
-async function callGemini(cfg, body) {
-  const url = `${cfg.ai.baseUrl}/v1beta/models/${cfg.ai.model}:generateContent?key=${cfg.ai.apiKey}`;
+async function callGeminiApi(cfg, modelName, body) {
+  const url = `${cfg.ai.baseUrl}/v1beta/models/${modelName}:generateContent?key=${cfg.ai.apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -129,7 +127,10 @@ async function callGemini(cfg, body) {
     const text = (await res.text().catch(() => '')).slice(0, 300);
     if (res.status === 400 || res.status === 401) throw new AgentError('AI_AUTH', 'Clé GEMINI_API_KEY refusée ou invalide.', 502);
     if (res.status === 429) throw new AgentError('AI_RATE_LIMIT', 'Limite de requêtes atteinte sur Gemini API, réessaie dans un instant.', 429);
-    throw new AgentError('AI_FAILED', `L’API Gemini a répondu ${res.status} ${text}`, 502);
+    
+    const err = new AgentError('AI_FAILED', `L’API Gemini a répondu ${res.status} ${text}`, 502);
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
@@ -138,6 +139,27 @@ async function callGemini(cfg, body) {
     throw new AgentError('AI_FAILED', 'L’API Gemini a renvoyé une réponse vide.', 502);
   }
   return candidate.content;
+}
+
+const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+
+async function callGemini(cfg, body) {
+  const initialModel = cfg.ai.model || 'gemini-1.5-flash';
+  const modelsToTry = [initialModel, ...GEMINI_MODELS.filter((m) => m !== initialModel)];
+
+  let lastError;
+  for (const modelName of modelsToTry) {
+    try {
+      return await callGeminiApi(cfg, modelName, body);
+    } catch (err) {
+      lastError = err;
+      if (err.status === 404 || (err.message && err.message.includes('404'))) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 function defaultCallModel(cfg, body) {
@@ -175,7 +197,6 @@ async function runAgent(deps, req) {
     ? `${req.message}\n\n(Contraintes choisies dans l'interface : ${constraints.join(', ')}.)`
     : req.message;
 
-  // Conversion de l'historique au format Gemini (role: 'user' | 'model')
   const contents = [
     ...(req.history || []).slice(-6).map((h) => ({
       role: h.role === 'assistant' ? 'model' : 'user',
