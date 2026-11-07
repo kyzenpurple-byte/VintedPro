@@ -4,8 +4,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Lecteur de .env maison : fonctionne sur toutes les versions de Node et gère les fins de ligne
-// Windows (CRLF), le BOM du Bloc-notes et les guillemets. Les variables déjà définies priment.
 function parseEnv(text) {
   const out = {};
   for (const raw of String(text).replace(/^﻿/, '').split(/\r?\n/)) {
@@ -40,7 +38,6 @@ function loadAi(env) {
 
   let provider = String(env.AI_PROVIDER || '').toLowerCase();
   
-  // Détection automatique du provider si non spécifié explicitement
   if (!['openrouter', 'gemini', 'anthropic'].includes(provider)) {
     if (openrouter) provider = 'openrouter';
     else if (anthropic) provider = 'anthropic';
@@ -54,7 +51,8 @@ function loadAi(env) {
       provider,
       apiKey: openrouter,
       maxSteps,
-      model: env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-exp:free',
+      // Utilisation d'un modèle gratuit stable
+      model: env.OPENROUTER_MODEL || 'deepseek/deepseek-r1:free',
       baseUrl: env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
       keyVar: 'OPENROUTER_API_KEY',
       siteUrl: env.SITE_URL || 'http://localhost',
