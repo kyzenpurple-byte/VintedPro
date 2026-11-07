@@ -54,7 +54,7 @@ function loadAi(env) {
       provider,
       apiKey: openrouter,
       maxSteps,
-      model: env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+      model: env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-exp:free',
       baseUrl: env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
       keyVar: 'OPENROUTER_API_KEY',
       siteUrl: env.SITE_URL || 'http://localhost',
