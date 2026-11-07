@@ -39,7 +39,7 @@ function loadAi(env) {
     provider: 'gemini',
     apiKey,
     maxSteps,
-    model: env.GEMINI_MODEL || 'gemini-2.5-flash',
+    model: env.GEMINI_MODEL || 'gemini-1.5-flash',
     baseUrl: env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
     keyVar: 'GEMINI_API_KEY',
   };
