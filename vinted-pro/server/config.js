@@ -34,21 +34,49 @@ const int = (v, d) => {
 };
 
 function loadAi(env) {
+  const openrouter = env.OPENROUTER_API_KEY || '';
   const gemini = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
   const anthropic = env.ANTHROPIC_API_KEY || '';
+
   let provider = String(env.AI_PROVIDER || '').toLowerCase();
-  if (provider !== 'gemini' && provider !== 'anthropic') provider = !gemini && anthropic ? 'anthropic' : 'gemini';
+  
+  // Détection automatique du provider si non spécifié explicitement
+  if (!['openrouter', 'gemini', 'anthropic'].includes(provider)) {
+    if (openrouter) provider = 'openrouter';
+    else if (anthropic) provider = 'anthropic';
+    else provider = 'gemini';
+  }
+
   const maxSteps = int(env.AGENT_MAX_STEPS, 8);
+
+  if (provider === 'openrouter') {
+    return {
+      provider,
+      apiKey: openrouter,
+      maxSteps,
+      model: env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+      baseUrl: env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+      keyVar: 'OPENROUTER_API_KEY',
+      siteUrl: env.SITE_URL || 'http://localhost',
+      appName: env.APP_NAME || 'VintedPro',
+    };
+  }
+
   if (provider === 'anthropic') {
     return {
-      provider, apiKey: anthropic, maxSteps,
+      provider,
+      apiKey: anthropic,
+      maxSteps,
       model: env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
       baseUrl: env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
       keyVar: 'ANTHROPIC_API_KEY',
     };
   }
+
   return {
-    provider, apiKey: gemini, maxSteps,
+    provider,
+    apiKey: gemini,
+    maxSteps,
     model: env.GEMINI_MODEL || 'gemini-3.8-flash',
     baseUrl: env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
     keyVar: 'GEMINI_API_KEY',
